@@ -23,9 +23,49 @@ const app = express(); // создание express приложения. Вся 
 
 app.use(express.json()); //позволяет читать json который к нам приходит
 
+//авторизация
+app.post("/auth/login", async (req, res) => {
+  try {
+    const user = await UserModel.findOne({ email: req.body.email }); //Поиск пользователя по признаку mail
+
+    if (!user) {
+      return req.status(404).json({
+        message: "Пользователь не найден",
+      });
+    }
+
+    const isValidPass = await bcrypt.compare(
+      req.body.password,
+      user._doc.passwordHash
+    ); //проверяет/сравнивает есть ли пароль который ввел
+    //пользователь с тем что есть у нас в документе
+    if (!isValidPass) {
+      return req.status(404).json({
+        message: "Неверный логин или пароль",
+      });
+    }
+
+    const token = jwt.sign(
+      {
+        _id: user._id, //шифруем
+      },
+      "secret123",
+      { expiresIn: "30d" }
+    );
+    const { passwordHash, ...userData } = user._doc; //достаем passwordHash. Диструктуризация
+
+    res.json({
+      //возвращаем информацию о пользователе и сам токен
+      ...userData,
+      token,
+    });
+  } catch (err) {}
+});
+
 //когда мне придет запрос на этот адресс "/auth/login" я хочу отловить запрос, вытащить запрос и ответ
 app.post("/auth/register", registerValidation, async (req, res) => {
   try {
+    //Если все прошло успешно то возвращаем информацию о пользователе
     const errors = validationResult(req); //Проверяем ошибки из запроса (req)
     if (!errors.isEmpty()) {
       //Проверить если есть ошибки то вернуть статут 400 и все ошибки
@@ -34,19 +74,38 @@ app.post("/auth/register", registerValidation, async (req, res) => {
 
     const password = req.body.password;
     const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(password, salt);
+    const hash = await bcrypt.hash(password, salt);
 
     const doc = new UserModel({
       email: req.body.email,
       fullName: req.body.fullName,
-      passwordHash,
       avatarUrl: req.body.avatarUrl,
+      hash,
     });
 
     const user = await doc.save(); //Создание пользователя. Резульатт вернувшийся от mongo db передается user
 
-    res.json(user); //Возвращаем пользователю информацию о пользователе
-  } catch (err) {}
+    const token = jwt.sign(
+      {
+        _id: user._id, //шифруем
+      },
+      "secret123",
+      { expiresIn: "30d" }
+    ); //Шифруем пользователя и добавляем время жизни (30 дней)
+
+    const { passwordHash, ...userData } = user._doc; //достаем passwordHash. Диструктуризация
+
+    res.json({
+      //возвращаем информацию о пользователе и сам токен
+      ...userData,
+      token,
+    }); //Возвращаем пользователю информацию о пользователе
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({
+      message: " Не удалось зарегистривароться",
+    });
+  }
 });
 
 //запуск приложения по порту 4444. Функция для обработки ошибки
