@@ -7,6 +7,7 @@ import { validationResult } from "express-validator";
 import { registerValidation } from "./validations/auth.js";
 
 import UserModel from "./models/User.js"; //Импортируем модель пользователя
+// import { restart } from "nodemon";
 
 mongoose
   .connect(
@@ -29,7 +30,7 @@ app.post("/auth/login", async (req, res) => {
     const user = await UserModel.findOne({ email: req.body.email }); //Поиск пользователя по признаку mail
 
     if (!user) {
-      return req.status(404).json({
+      return res.status(404).json({
         message: "Пользователь не найден",
       });
     }
@@ -39,8 +40,9 @@ app.post("/auth/login", async (req, res) => {
       user._doc.passwordHash
     ); //проверяет/сравнивает есть ли пароль который ввел
     //пользователь с тем что есть у нас в документе
+
     if (!isValidPass) {
-      return req.status(404).json({
+      return res.status(400).json({
         message: "Неверный логин или пароль",
       });
     }
@@ -52,6 +54,7 @@ app.post("/auth/login", async (req, res) => {
       "secret123",
       { expiresIn: "30d" }
     );
+
     const { passwordHash, ...userData } = user._doc; //достаем passwordHash. Диструктуризация
 
     res.json({
@@ -59,7 +62,12 @@ app.post("/auth/login", async (req, res) => {
       ...userData,
       token,
     });
-  } catch (err) {}
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({
+      message: " Не удалось авторизоваться",
+    });
+  }
 });
 
 //когда мне придет запрос на этот адресс "/auth/login" я хочу отловить запрос, вытащить запрос и ответ
@@ -80,7 +88,7 @@ app.post("/auth/register", registerValidation, async (req, res) => {
       email: req.body.email,
       fullName: req.body.fullName,
       avatarUrl: req.body.avatarUrl,
-      hash,
+      passwordHash: hash,
     });
 
     const user = await doc.save(); //Создание пользователя. Резульатт вернувшийся от mongo db передается user
